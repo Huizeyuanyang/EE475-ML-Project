@@ -2,18 +2,19 @@
 
 Question
     How much of a song does someone need to hum before it can be identified,
-    and do the linear classifiers degrade differently as queries get shorter?
+    and does the linear model degrade differently from the nonlinear one as
+    queries get shorter?
 
 Design
     Crop every query to its first L seconds, L = 1..8 (data.crop).
     Two protocols:
         matched:    train and score on L-second queries
         full_train: train on full 8 s queries, score on L-second ones
-                    (needs length-independent features, i.e. A's histograms;
+                    (needs length-independent features, i.e. A's HandDesignedFeatures;
                     skipped while the RawPitch placeholder is in use)
-    Models: one-versus-all logistic / perceptron / SVM, multi-class perceptron,
-    softmax regression (full batch and mini-batch), plus the nearest-centroid reference.
-    Optional part 2: cost history of gradient descent vs Newton vs mini-batch on one
+    Models: softmax regression (full batch and mini-batch), D's MLP,
+    plus the nearest-centroid reference.
+    Optional part 2: cost history of full-batch vs mini-batch gradient descent on one
     setting (plot cost vs iteration, as in the book).
 
 Output
@@ -26,8 +27,8 @@ Run
 from qbsh.baselines import NearestCentroid, RawPitch
 from qbsh.data import crop
 from qbsh.evaluation import evaluate, save_results
-from qbsh.linear import (LinearSVM, LogisticRegression, MulticlassPerceptron, OneVsAll,
-                         Perceptron, SoftmaxRegression)
+from qbsh.linear import SoftmaxRegression
+from qbsh.nonlinear import MLPClassifier
 from qbsh.pipeline import Pipeline
 
 from .common import load_split, parse_args, results_name, run_or_skip
@@ -36,12 +37,9 @@ SECONDS = (1, 2, 3, 4, 5, 6, 7, 8)
 
 MODELS = {
     "nearest_centroid (reference)": NearestCentroid,
-    "ova_logistic": lambda: OneVsAll(lambda: LogisticRegression()),
-    "ova_perceptron": lambda: OneVsAll(lambda: Perceptron()),
-    "ova_svm": lambda: OneVsAll(lambda: LinearSVM()),
-    "multiclass_perceptron": MulticlassPerceptron,
     "softmax_gd": SoftmaxRegression,
     "softmax_minibatch": lambda: SoftmaxRegression(batch_size=64),
+    "mlp": MLPClassifier,
 }
 
 # TODO(B): switch to A's features once they exist:

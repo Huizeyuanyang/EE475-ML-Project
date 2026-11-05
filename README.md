@@ -4,14 +4,18 @@ Identify which of **48 songs** someone is humming from an 8-second clip, using t
 hand-labelled pitch contours in the MIR-QBSH corpus, and run four experiments,
 one per member.
 
+**Scope:** one linear model (`linear.SoftmaxRegression`) and one nonlinear model
+(`nonlinear.MLPClassifier`). Plus a live demo for the video: a new recording is turned
+into a pitch contour (`audio.py`) and fed to the trained model (`demo/hum_demo.py`).
+
 ## Who owns what
 
 | Member | Module file(s) | Course methods | Experiment script |
 |---|---|---|---|
-| **A** | `qbsh/data.py`, `qbsh/features.py` | histogram features 9.2, standard normalization 9.3, missing-value imputation 9.4, nonlinear feature engineering 10.5 | `experiments/exp_key_normalization.py` |
-| **B** | `qbsh/optimizers.py`, `qbsh/linear.py` | gradient descent 3.5, Newton 4.3, logistic/softmax 6.2–6.3, perceptron 6.4, SVM 6.5, one-vs-all 7.2, multi-class perceptron 7.3, cross entropy 7.5, mini-batch 7.8 | `experiments/exp_query_length.py` |
-| **C** | `qbsh/evaluation.py`, `qbsh/reduction.py` | PCA 8.3, K-means 8.5, PCA-sphering 9.5, feature selection by boosting 9.6 and regularization 9.7, K-fold CV 11.10 | `experiments/exp_dimred_featsel.py` |
-| **D** | `qbsh/nonlinear.py` | kernels Ch. 12, neural nets Ch. 13 (batch norm 13.6, early stopping 13.7), trees / random forests / boosting Ch. 14, bagging 11.9 | `experiments/exp_handcrafted_vs_learned.py` |
+| **A** | `qbsh/data.py`, `qbsh/features.py` | standard normalization 9.3, missing-value imputation 9.4, nonlinear feature engineering 10.5 | `experiments/exp_key_normalization.py` |
+| **B** | `qbsh/histograms.py`, `qbsh/optimizers.py`, `qbsh/linear.py`, `qbsh/audio.py`, `demo/hum_demo.py` | histogram features 9.2, gradient descent 3.5, multi-class softmax / cross entropy 7.5, mini-batch 7.8; pitch extraction (pYIN) for the demo | `experiments/exp_query_length.py` |
+| **C** | `qbsh/evaluation.py`, `qbsh/reduction.py` | PCA 8.3, K-means 8.5, K-fold CV 11.10 | `experiments/exp_dimred.py` |
+| **D** | `qbsh/nonlinear.py` | neural nets Ch. 13 (batch norm 13.6, early stopping 13.7) | `experiments/exp_handcrafted_vs_learned.py` |
 | shared | `qbsh/contracts.py`, `qbsh/config.py`, `qbsh/pipeline.py`, `qbsh/baselines.py`, `experiments/common.py`, `experiments/run_baseline.py` | | |
 
 ## Layout
@@ -22,20 +26,25 @@ qbsh-project/
 │   ├── contracts.py    shared: constants, QueryData, Transformer / Classifier interfaces
 │   ├── config.py       shared: data path, train/val/test years, seed
 │   ├── data.py         A: load corpus, year split, crop, load_wav            [implemented]
-│   ├── features.py     A: imputation, key normalization, histograms, scaler  [stubs]
-│   ├── optimizers.py   B: gradient descent, Newton, mini-batch                [stubs]
-│   ├── linear.py       B: costs, logistic, perceptron, SVM, OvA, softmax      [stubs]
+│   ├── features.py     A: imputation, key normalization, contour stats,
+│   │                      polynomial features, HandDesignedFeatures, scaler  [stubs]
+│   ├── histograms.py   B: pitch histogram, interval histogram                [stubs]
+│   ├── audio.py        B: wav -> pitch (pYIN), same format as .pv            [stubs]
+│   ├── optimizers.py   B: gradient descent, mini-batch                       [stubs]
+│   ├── linear.py       B: categorical cross entropy, SoftmaxRegression       [stubs]
 │   ├── evaluation.py   C: metrics + save_results [implemented], K-fold CV     [stubs]
-│   ├── reduction.py    C: PCA, sphering, K-means, boosting / L1 selection     [stubs]
-│   ├── nonlinear.py    D: kernels, MLP, trees, forests, boosting, bagging     [stubs]
+│   ├── reduction.py    C: PCA, K-means                                        [stubs]
+│   ├── nonlinear.py    D: MLP (batch norm, early stopping, embed)             [stubs]
 │   ├── pipeline.py     shared: Pipeline(steps, model), FunctionStep           [implemented]
 │   └── baselines.py    shared: RawPitch, NearestCentroid placeholders         [implemented]
 ├── experiments/
 │   ├── run_baseline.py               runs today
-│   ├── exp_key_normalization.py      A
-│   ├── exp_query_length.py           B
-│   ├── exp_dimred_featsel.py         C
-│   └── exp_handcrafted_vs_learned.py D
+│   ├── exp_key_normalization.py      A: normalization methods, softmax
+│   ├── exp_query_length.py           B: 1-8 s, softmax vs MLP vs nearest centroid
+│   ├── exp_dimred.py                 C: PCA components, K-means purity
+│   └── exp_handcrafted_vs_learned.py D: MLP on hand features vs raw contour, embed -> softmax
+├── demo/
+│   └── hum_demo.py                   B: your .wav -> audio.py -> trained model -> top-10 songs
 ├── tests/
 │   ├── test_data.py        real-corpus + plumbing checks (must pass now)
 │   └── test_contracts.py   one block per member; skipped until your code exists
@@ -54,6 +63,7 @@ pip install -r requirements.txt
 pytest                                   # stubs show up as "skipped"
 python -m experiments.run_baseline       # raw pitch + nearest centroid
 python -m experiments.exp_query_length   # any experiment; unfinished settings print "skip"
+python -m demo.hum_demo my_hum.wav       # needs librosa (B), A's features, and a trained model
 ```
 
 Run from the project root, using `python -m experiments.<name>`, not `python experiments/<name>.py`.
@@ -74,7 +84,7 @@ validation year (2007), **0.143 / 0.603 / 0.279** on the test years. Chance top-
 
 - **X is `(n_samples, n_features)`.** The textbook stores points as columns (`x` of shape `(N, P)`),
   so transpose when porting book code.
-- **Labels** are song ids `0..47` (`00012.pv` → 11). Binary models inside one-vs-all use `{-1, +1}`.
+- **Labels** are song ids `0..47` (`00012.pv` → 11).
 - **Unvoiced frames are `np.nan`** in `QueryData.pitch` (0 in the raw `.pv` files, ~27% of frames).
   Some step before the model has to remove them (`impute_unvoiced`, the histograms, or `RawPitch`).
 - **Every classifier** has `fit(X, y) -> self` and `predict_scores(X) -> (n, 48)`; `predict` is inherited.
@@ -82,19 +92,23 @@ validation year (2007), **0.143 / 0.603 / 0.279** on the test years. Chance top-
 - **Every feature step / reducer** has `fit(X, y=None) -> self` and `transform(X)`.
 - Pipelines start from the raw pitch matrix:
   `Pipeline([KeyNormalizer("median"), HandDesignedFeatures(), StandardScaler()], SoftmaxRegression())`.
+- **`audio.wav_to_pitch` output must look like one row of `QueryData.pitch`**: semitones,
+  31.25 frames/s, NaN for unvoiced, 250 frames. Then the models take it unchanged.
 
 ## Build order (what unblocks whom)
 
 The experiment scripts already run end to end with placeholders (`RawPitch`, `NearestCentroid`).
 Each place to swap in the real piece is marked with a `TODO` in the script.
 
-1. **A:** `impute_unvoiced`, `KeyNormalizer`, `StandardScaler`, then `HandDesignedFeatures`.
-   B, C and D's experiments all use these.
-2. **B:** `softmax_cost` / `categorical_cross_entropy`, `gradient_descent`, then `SoftmaxRegression`.
-   It is the default classifier in A's and C's experiments, and C's selectors reuse B's costs.
+1. **A:** `impute_unvoiced`, `KeyNormalizer`, `StandardScaler`, then `HandDesignedFeatures`
+   (start with the histograms switched off). B, C and D's experiments all use these.
+2. **B:** `pitch_histogram` / `interval_histogram` first (A's `HandDesignedFeatures` uses them),
+   then `categorical_cross_entropy`, `gradient_descent`, `SoftmaxRegression`, mini-batch.
+   `SoftmaxRegression` is the default classifier in A's and C's experiments.
+   `audio.py` and the demo come last.
 3. **C:** `k_fold_indices` / `cross_validate`. Everyone uses them to tune hyperparameters
-   (until then, tune on the validation year).
-4. **D:** `MLPClassifier` (with `embed`) first; the trees and kernels can come later.
+   (until then, tune on the validation year). Then `PCA` (D's embedding plot uses it) and `KMeans`.
+4. **D:** `MLPClassifier` with `embed`.
 
 ## The split (`config.py`)
 
@@ -114,5 +128,6 @@ so `singer_id` includes the year. For K-fold CV inside the training years, pass
 - The classes are very unbalanced: songs 1–10 (English nursery rhymes, mostly from 2006a) have 11–19 clips each;
   most of the others have 50–170. Look at per-song accuracy (`evaluation.confusion_matrix`), not only the average.
 - The pitch labels were made by hand by the students who recorded the clips, so some are wrong.
+- Every query starts at the beginning of its song, so the demo works best if you hum the opening.
 - `waveFile/year*/personDirInfo.txt` maps people to their real names. Don't load it, commit it or share it.
 - The MIDI files aren't used by the classification pipeline (`data.midi_path` points to them if you want them).

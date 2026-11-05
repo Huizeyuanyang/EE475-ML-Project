@@ -6,12 +6,13 @@ you merge. You may tune hyperparameters inside your own tests, but don't weaken 
 shape/invariance checks: other members' code relies on them.
 """
 import functools
+import wave
 
 import numpy as np
 import pytest
 
 from qbsh.baselines import NearestCentroid
-from qbsh.contracts import N_SONGS
+from qbsh.contracts import N_FRAMES, N_SONGS
 
 
 def skip_if_stub(test):
@@ -37,14 +38,6 @@ def blobs(n_per_class=40, n_classes=3, d=5, spread=0.5, seed=0):
     return X, np.repeat(np.arange(n_classes), n_per_class)
 
 
-def circles(n=200, seed=0):
-    """Inner disk (label 0) vs outer ring (label 1): not linearly separable."""
-    rng = np.random.default_rng(seed)
-    r = np.r_[rng.uniform(0, 1, n // 2), rng.uniform(2, 3, n // 2)]
-    t = rng.uniform(0, 2 * np.pi, n)
-    return np.c_[r * np.cos(t), r * np.sin(t)], np.r_[np.zeros(n // 2, int), np.ones(n // 2, int)]
-
-
 def pitch_batch(n=4, T=250, seed=0):
     """Fake pitch contours shaped like data.load_queries().pitch (integer semitones, NaN gaps)."""
     rng = np.random.default_rng(seed)
@@ -52,6 +45,18 @@ def pitch_batch(n=4, T=250, seed=0):
     p[rng.random((n, T)) < 0.25] = np.nan
     p[:, :5] = np.nan                       # leading silence
     return p
+
+
+def write_sine_wav(path, freq=220.0, seconds=8.0, sr=44100):
+    """A 16-bit mono sine tone, like a phone recording (not the corpus's 8-bit 8 kHz format)."""
+    t = np.arange(int(seconds * sr)) / sr
+    data = (0.5 * np.sin(2 * np.pi * freq * t) * 32767).astype("<i2")
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(data.tobytes())
+    return path
 
 
 def accuracy(model, X, y):
@@ -97,17 +102,6 @@ def test_A_key_normalizer_removes_transposition():
 
 
 @skip_if_stub
-def test_A_histograms():
-    from qbsh.features import KeyNormalizer, interval_histogram, pitch_histogram
-    p = pitch_batch()
-    h = pitch_histogram(KeyNormalizer("median").transform(p), n_bins=25)
-    assert h.shape == (4, 25) and np.allclose(h.sum(axis=1), 1)
-    ih = interval_histogram(p, max_interval=12)
-    assert ih.shape == (4, 25) and np.allclose(ih.sum(axis=1), 1)
-    assert np.allclose(interval_histogram(p + 7, max_interval=12), ih)   # key-invariant
-
-
-@skip_if_stub
 def test_A_contour_statistics_and_polynomial_features():
     from qbsh.features import contour_statistics, polynomial_features
     feats, names = contour_statistics(pitch_batch())
@@ -120,11 +114,19 @@ def test_A_contour_statistics_and_polynomial_features():
 def test_A_hand_designed_features():
     from qbsh.features import HandDesignedFeatures, KeyNormalizer
     p = KeyNormalizer("median").transform(pitch_batch(n=6))
-    f = HandDesignedFeatures().fit(p)
-    X = f.transform(p)
-    assert X.ndim == 2 and X.shape[0] == 6 and not np.isnan(X).any()
-    assert len(f.feature_names_) == X.shape[1]
-    assert f.transform(p[:, :62]).shape == X.shape      # cropped queries -> same feature size
+    # Histograms (B) off, so A can finish this before B's histograms exist.
+    # Once both are done, also run it with the defaults (histograms on).
+    for kwargs in ({"use_pitch_hist": False, "use_interval_hist": False}, {}):
+        try:
+            f = HandDesignedFeatures(**kwargs).fit(p)
+            X = f.transform(p)
+        except NotImplementedError:
+            if kwargs:
+                raise
+            continue                                    # B's histograms not ready yet
+        assert X.ndim == 2 and X.shape[0] == 6 and not np.isnan(X).any()
+        assert len(f.feature_names_) == X.shape[1]
+        assert f.transform(p[:, :62]).shape == X.shape  # cropped queries -> same feature size
 
 
 @skip_if_stub
@@ -140,7 +142,19 @@ def test_A_standard_scaler_uses_train_statistics():
     assert np.allclose(s.transform(X + 1)[:, 0], Z[:, 0] + 1 / X[:, 0].std())   # train stats reused
 
 
-# ================================================================ B: optimizers & linear models
+# ================================================================ B: histograms, optimizers, softmax, audio
+
+@skip_if_stub
+def test_B_histograms():
+    from qbsh.histograms import interval_histogram, pitch_histogram
+    p = pitch_batch()
+    centered = p - np.nanmedian(p, axis=1, keepdims=True)  # stand-in for A's KeyNormalizer
+    h = pitch_histogram(centered, n_bins=25)
+    assert h.shape == (4, 25) and np.allclose(h.sum(axis=1), 1)
+    ih = interval_histogram(p, max_interval=12)
+    assert ih.shape == (4, 25) and np.allclose(ih.sum(axis=1), 1)
+    assert np.allclose(interval_histogram(p + 7, max_interval=12), ih)   # key-invariant
+
 
 def quadratic():
     A = np.array([[3.0, 0.5], [0.5, 1.0]])
@@ -166,14 +180,6 @@ def test_B_gradient_descent_converges():
 
 
 @skip_if_stub
-def test_B_newton_solves_quadratic_in_one_step():
-    from qbsh.optimizers import newtons_method
-    f, A, w_star = quadratic()
-    w, _ = newtons_method(f, lambda w: A, np.zeros(2), max_its=1)
-    assert np.allclose(w, w_star, atol=1e-5)
-
-
-@skip_if_stub
 def test_B_minibatch_gradient_descent():
     from qbsh.optimizers import minibatch_gradient_descent
     rng = np.random.default_rng(0)
@@ -191,50 +197,37 @@ def test_B_minibatch_gradient_descent():
 
 
 @skip_if_stub
-def test_B_cost_gradients_match_numeric():
+def test_B_cross_entropy_gradient_matches_numeric():
     from qbsh import linear
     rng = np.random.default_rng(0)
     Xb = linear.add_bias(rng.normal(size=(30, 4)))
-    y_pm, y_k = rng.choice([-1, 1], size=30), rng.integers(0, 3, size=30)
-    w, W = rng.normal(size=5), rng.normal(size=(5, 3))
-    cases = [
-        ("softmax", lambda v: linear.softmax_cost(v, Xb, y_pm, lam=0.1), w),
-        ("perceptron", lambda v: linear.perceptron_cost(v, Xb, y_pm), w),
-        ("hinge", lambda v: linear.hinge_cost(v, Xb, y_pm, lam=0.1), w),
-        ("multiclass_perceptron", lambda v: linear.multiclass_perceptron_cost(v, Xb, y_k, lam=0.1), W),
-        ("cce", lambda v: linear.categorical_cross_entropy(v, Xb, y_k, lam=0.1), W),
-    ]
-    checked = []
-    for name, cost, w0 in cases:
-        try:
-            grad = cost(w0)[1]
-        except NotImplementedError:
-            continue                                    # check the costs that exist so far
-        assert np.allclose(grad, numeric_grad(cost, w0), atol=1e-5), name
-        checked.append(name)
-    if not checked:
-        raise NotImplementedError("B: no cost functions yet")
+    y = rng.integers(0, 3, size=30)
+    W = rng.normal(size=(5, 3))
+    cost = lambda v: linear.categorical_cross_entropy(v, Xb, y, lam=0.1)  # noqa: E731
+    assert np.allclose(cost(W)[1], numeric_grad(cost, W), atol=1e-5)
 
 
 @skip_if_stub
-def test_B_binary_classifiers_separate_two_blobs():
-    from qbsh.linear import LinearSVM, LogisticRegression, Perceptron
-    X, y = blobs(n_classes=2, d=2)
-    y = np.where(y == 1, 1, -1)
-    for model in (LogisticRegression("gd"), LogisticRegression("newton"), Perceptron(), LinearSVM()):
-        model.fit(X, y)
-        assert model.decision_function(X).shape == (len(y),)
-        assert accuracy(model, X, y) >= 0.95, type(model).__name__
-
-
-@skip_if_stub
-def test_B_multiclass_models():
-    from qbsh.linear import LinearSVM, LogisticRegression, MulticlassPerceptron, OneVsAll, SoftmaxRegression
+def test_B_softmax_regression():
+    from qbsh.linear import SoftmaxRegression
     X, y = blobs()
-    for model in (OneVsAll(lambda: LogisticRegression()), OneVsAll(lambda: LinearSVM()),
-                  MulticlassPerceptron(), SoftmaxRegression(), SoftmaxRegression(batch_size=16)):
+    for model in (SoftmaxRegression(), SoftmaxRegression(batch_size=16)):
         check_scores(model.fit(X, y).predict_scores(X), len(y))
-        assert accuracy(model, X, y) >= 0.95, type(model).__name__
+        assert accuracy(model, X, y) >= 0.95
+
+
+@skip_if_stub
+def test_B_wav_to_pitch_matches_pv_format(tmp_path):
+    pytest.importorskip("librosa")
+    from qbsh.audio import wav_to_pitch
+    # 220 Hz = MIDI note 57 (A3)
+    full = wav_to_pitch(write_sine_wav(tmp_path / "a3.wav", 220.0, seconds=8.0))
+    assert full.shape == (N_FRAMES,)
+    voiced = full[~np.isnan(full)]
+    assert len(voiced) > 0.8 * N_FRAMES
+    assert abs(np.median(voiced) - 57) < 0.5
+    short = wav_to_pitch(write_sine_wav(tmp_path / "short.wav", 220.0, seconds=4.0))
+    assert short.shape == (N_FRAMES,) and np.isnan(short[-50:]).all()   # padded with NaN
 
 
 # ================================================================ C: reduction & evaluation
@@ -256,13 +249,6 @@ def test_C_pca():
     assert np.abs(pca.inverse_transform(pca.transform(X)) - X).mean() < 0.2
     full = PCA().fit(X)
     assert np.allclose(full.inverse_transform(full.transform(X)), X)
-
-
-@skip_if_stub
-def test_C_pca_sphering_whitens():
-    from qbsh.reduction import PCASphering
-    Z = PCASphering().fit_transform(stretched())
-    assert np.allclose(np.cov(Z.T), np.eye(3), atol=0.02)
 
 
 @skip_if_stub
@@ -305,37 +291,7 @@ def test_C_cross_validate():
     assert out["top1"] > 0.95
 
 
-@skip_if_stub
-def test_C_feature_selectors_find_the_informative_feature():
-    from qbsh.reduction import BoostingSelector, L1Selector
-    rng = np.random.default_rng(0)
-    X = rng.normal(size=(300, 6))
-    y = (X[:, 2] > 0).astype(int)                                # only feature 2 matters
-    boost = BoostingSelector(n_features=1).fit(X, y)
-    assert boost.selected_[0] == 2 and boost.transform(X).shape == (300, 1)
-    l1 = L1Selector(lam=0.05).fit(X, y)
-    assert 2 in l1.selected_ and l1.transform(X).shape == (300, len(l1.selected_))
-
-
-# ================================================================ D: nonlinear models
-
-@skip_if_stub
-def test_D_kernels():
-    from qbsh.nonlinear import polynomial_kernel, rbf_kernel
-    A, B = np.random.default_rng(0).normal(size=(4, 3)), np.random.default_rng(1).normal(size=(5, 3))
-    assert np.allclose(polynomial_kernel(A, B, degree=2, c=1.0), (A @ B.T + 1) ** 2)
-    K = rbf_kernel(A, A, gamma=0.5)
-    assert np.allclose(np.diag(K), 1) and np.allclose(K, K.T) and (K > 0).all()
-
-
-@skip_if_stub
-def test_D_kernel_classifier_solves_circles():
-    from qbsh.nonlinear import KernelClassifier
-    X, y = circles()
-    model = KernelClassifier("rbf", gamma=1.0).fit(X, y)
-    check_scores(model.predict_scores(X), len(y))
-    assert accuracy(model, X, y) >= 0.95
-
+# ================================================================ D: neural network
 
 @skip_if_stub
 def test_D_mlp_and_embedding():
@@ -348,14 +304,12 @@ def test_D_mlp_and_embedding():
 
 
 @skip_if_stub
-def test_D_trees_and_bagging_solve_circles():
-    from qbsh.nonlinear import Bagging, DecisionTree, GradientBoosting, RandomForest
-    X, y = circles()
-    for model, threshold in ((DecisionTree(max_depth=8), 0.95), (RandomForest(n_trees=20), 0.95),
-                             (GradientBoosting(n_rounds=30), 0.9),
-                             (Bagging(lambda: DecisionTree(max_depth=5), n_models=5), 0.9)):
-        check_scores(model.fit(X, y).predict_scores(X), len(y))
-        assert accuracy(model, X, y) >= threshold, type(model).__name__
+def test_D_mlp_options_keep_the_contract():
+    from qbsh.nonlinear import MLPClassifier
+    X, y = blobs()
+    for kwargs in ({"batch_norm": False}, {"early_stopping": False}):
+        model = MLPClassifier(hidden=(32,), lr=1e-2, epochs=200, **kwargs).fit(X, y)
+        check_scores(model.predict_scores(X), len(y))
 
 
 # ================================================================ shared plumbing
