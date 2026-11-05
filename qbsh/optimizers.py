@@ -1,12 +1,11 @@
-"""Optimizers shared by the linear models (and reusable by C and D).
+"""Optimizers for the linear model (and reusable by D).
 
 Owner: B.
-Course methods: gradient descent 3.5, Newton's method 4.3, mini-batch learning 7.8.
+Course methods: gradient descent 3.5, mini-batch learning 7.8.
 
 Convention: a cost is given as a function `cost_and_grad(w) -> (cost: float, grad: ndarray)`
-with grad the same shape as w. Newton's method also gets `hess(w) -> (d, d)`.
-Each optimizer returns (w_final, cost_history) so B can plot cost histories
-the way the book does.
+with grad the same shape as w. Each optimizer returns (w_final, cost_history) so B can
+plot cost histories the way the book does.
 """
 from __future__ import annotations
 
@@ -27,19 +26,6 @@ def gradient_descent(cost_and_grad: CostAndGrad, w0: np.ndarray, alpha: float = 
     TODO(B)
     """
     raise NotImplementedError("B: 3.5 gradient descent")
-
-
-def newtons_method(cost_and_grad: CostAndGrad, hess: Callable[[np.ndarray], np.ndarray],
-                   w0: np.ndarray, max_its: int = 20,
-                   epsilon: float = 1e-7) -> tuple[np.ndarray, list[float]]:
-    """4.3 Newton's method: w <- w - (H + epsilon * I)^-1 grad.
-
-    `epsilon` regularizes H so the solve works when H is singular.
-    Feasible only for small d (here: binary logistic regression on hand-designed features).
-
-    TODO(B)
-    """
-    raise NotImplementedError("B: 4.3 Newton's method")
 
 
 def minibatch_gradient_descent(batch_cost_and_grad: Callable[[np.ndarray, np.ndarray], tuple[float, np.ndarray]],

@@ -1,9 +1,12 @@
 """Hand-designed features.
 
 Owner: A.
-Course methods: histogram features 9.2, standard normalization 9.3,
-missing-value imputation 9.4, nonlinear feature engineering 10.5.
+Course methods: standard normalization 9.3, missing-value imputation 9.4,
+nonlinear feature engineering 10.5.
 Owned experiment: key normalization (experiments/exp_key_normalization.py).
+
+The two histogram features (9.2) live in histograms.py (owner: B), so A and B
+never edit the same file. HandDesignedFeatures imports them from there.
 
 Input to everything here is the pitch matrix from data.load_queries():
 (n, T) semitones, np.nan where the frame is unvoiced (~27% of frames).
@@ -20,6 +23,7 @@ from __future__ import annotations
 import numpy as np
 
 from .contracts import Transformer
+from .histograms import interval_histogram, pitch_histogram  # noqa: F401  (owner: B; used by HandDesignedFeatures)
 
 
 # ---------------------------------------------------------------- 9.4 missing values
@@ -72,32 +76,6 @@ class KeyNormalizer(Transformer):
         raise NotImplementedError("A: key normalization")
 
 
-# ---------------------------------------------------------------- 9.2 histograms
-
-def pitch_histogram(pitch: np.ndarray, n_bins: int = 25, value_range=(-12.0, 12.0)) -> np.ndarray:
-    """9.2 Histogram of voiced pitch values per query, normalized to sum to 1.
-
-    Meant for key-normalized pitch, so the default range is +-1 octave around 0.
-    Values outside value_range go into the edge bins, so every row sums to 1.
-    pitch (n, T) with NaN -> (n, n_bins). NaN frames are ignored.
-
-    TODO(A)
-    """
-    raise NotImplementedError("A: 9.2 pitch histogram")
-
-
-def interval_histogram(pitch: np.ndarray, max_interval: int = 12) -> np.ndarray:
-    """9.2 Histogram of pitch changes between consecutive voiced frames (or notes).
-
-    Key-invariant by construction: adding k semitones to a query doesn't change it.
-    Round intervals to whole semitones, clip to [-max_interval, max_interval].
-    pitch (n, T) with NaN -> (n, 2 * max_interval + 1), each row sums to 1.
-
-    TODO(A)
-    """
-    raise NotImplementedError("A: 9.2 interval histogram")
-
-
 # ---------------------------------------------------------------- 10.5 nonlinear features
 
 def contour_statistics(pitch: np.ndarray) -> tuple[np.ndarray, list[str]]:
@@ -123,7 +101,11 @@ def polynomial_features(X: np.ndarray, degree: int = 2) -> np.ndarray:
 
 
 class HandDesignedFeatures(Transformer):
-    """The feature vector B, C and D use: concatenates the pieces above.
+    """The feature vector B, C and D use: concatenates the pieces above
+    plus B's pitch_histogram / interval_histogram (histograms.py).
+
+    Until B's histograms exist, A can build and test this with
+    use_pitch_hist=False, use_interval_hist=False.
 
     Input: pitch (n, T) that has already been key-normalized (NaN allowed;
     each piece decides how to treat NaN).
