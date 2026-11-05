@@ -1,0 +1,22 @@
+# ---- Dataset: never commit ----
+# MIR-QBSH corpus (~295 MB of audio). Each teammate downloads it and puts it at
+# ./MIR-QBSH-corpus, or points QBSH_DATA at it.
+# waveFile/year*/personDirInfo.txt maps participants to their real names.
+MIR-QBSH-corpus/
+MIR-QBSH-corpus.tar.gz
+# Stray copies of corpus files anywhere else in the repo
+*.wav
+*.pv
+*.mid
+personDirInfo.txt
+
+# ---- Python ----
+__pycache__/
+.pytest_cache/
+.venv/
+
+# ---- Outputs ----
+results/
+
+# ---- OS ----
+.DS_Store
