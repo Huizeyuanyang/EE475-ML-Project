@@ -53,11 +53,11 @@ All experiments use the same pipeline (normalization, features, model) and chang
 
 ## 7. Team Roles
 
-| Member | Code | Experiments and analysis | Other |
-|---|---|---|---|
-| A | `features.py`: missing-value imputation, key normalization, contour statistics, polynomial and hand-designed features, scaler | Key normalization | Introduction, data, and system sections of the report; integration (merging branches, final test-set run) |
-| B | Softmax regression and optimizers; pitch extraction (pYIN) and the demo | Query length | Demo video |
-| C | K-fold cross-validation, PCA, K-means; histogram features | Dimensionality reduction and clustering; confusion analysis | Evaluation metrics section of the report |
-| D | MLP; noise module | Hand-designed vs. learned features; noise robustness | TA office hours; keeping this plan up to date |
+| Member | Code | Experiments and analysis |
+|---|---|---|
+| A | `features.py`: missing-value imputation, key normalization, contour statistics, polynomial and hand-designed features, scaler | Key normalization |
+| B | Softmax regression and optimizers; pitch extraction (pYIN) and the demo | Query length |
+| C | K-fold cross-validation, PCA, K-means; histogram features | Dimensionality reduction and clustering; confusion analysis |
+| D | MLP; noise module | Hand-designed vs. learned features; noise robustness |
 
 Each member also produces the figures and written results for their own experiments.
