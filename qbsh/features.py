@@ -5,7 +5,7 @@ Course methods: standard normalization 9.3, missing-value imputation 9.4,
 nonlinear feature engineering 10.5.
 Owned experiment: key normalization (experiments/exp_key_normalization.py).
 
-The two histogram features (9.2) live in histograms.py (owner: B), so A and B
+The two histogram features (9.2) live in histograms.py (owner: C), so A and C
 never edit the same file. HandDesignedFeatures imports them from there.
 
 Input to everything here is the pitch matrix from data.load_queries():
@@ -23,7 +23,7 @@ from __future__ import annotations
 import numpy as np
 
 from .contracts import Transformer
-from .histograms import interval_histogram, pitch_histogram  # noqa: F401  (owner: B; used by HandDesignedFeatures)
+from .histograms import interval_histogram, pitch_histogram  # noqa: F401  (owner: C; used by HandDesignedFeatures)
 
 
 # ---------------------------------------------------------------- 9.4 missing values
@@ -102,9 +102,9 @@ def polynomial_features(X: np.ndarray, degree: int = 2) -> np.ndarray:
 
 class HandDesignedFeatures(Transformer):
     """The feature vector B, C and D use: concatenates the pieces above
-    plus B's pitch_histogram / interval_histogram (histograms.py).
+    plus C's pitch_histogram / interval_histogram (histograms.py).
 
-    Until B's histograms exist, A can build and test this with
+    Until C's histograms exist, A can build and test this with
     use_pitch_hist=False, use_interval_hist=False.
 
     Input: pitch (n, T) that has already been key-normalized (NaN allowed;

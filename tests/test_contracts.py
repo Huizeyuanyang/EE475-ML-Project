@@ -114,7 +114,7 @@ def test_A_contour_statistics_and_polynomial_features():
 def test_A_hand_designed_features():
     from qbsh.features import HandDesignedFeatures, KeyNormalizer
     p = KeyNormalizer("median").transform(pitch_batch(n=6))
-    # Histograms (B) off, so A can finish this before B's histograms exist.
+    # Histograms (C) off, so A can finish this before C's histograms exist.
     # Once both are done, also run it with the defaults (histograms on).
     for kwargs in ({"use_pitch_hist": False, "use_interval_hist": False}, {}):
         try:
@@ -123,7 +123,7 @@ def test_A_hand_designed_features():
         except NotImplementedError:
             if kwargs:
                 raise
-            continue                                    # B's histograms not ready yet
+            continue                                    # C's histograms not ready yet
         assert X.ndim == 2 and X.shape[0] == 6 and not np.isnan(X).any()
         assert len(f.feature_names_) == X.shape[1]
         assert f.transform(p[:, :62]).shape == X.shape  # cropped queries -> same feature size
@@ -142,19 +142,7 @@ def test_A_standard_scaler_uses_train_statistics():
     assert np.allclose(s.transform(X + 1)[:, 0], Z[:, 0] + 1 / X[:, 0].std())   # train stats reused
 
 
-# ================================================================ B: histograms, optimizers, softmax, audio
-
-@skip_if_stub
-def test_B_histograms():
-    from qbsh.histograms import interval_histogram, pitch_histogram
-    p = pitch_batch()
-    centered = p - np.nanmedian(p, axis=1, keepdims=True)  # stand-in for A's KeyNormalizer
-    h = pitch_histogram(centered, n_bins=25)
-    assert h.shape == (4, 25) and np.allclose(h.sum(axis=1), 1)
-    ih = interval_histogram(p, max_interval=12)
-    assert ih.shape == (4, 25) and np.allclose(ih.sum(axis=1), 1)
-    assert np.allclose(interval_histogram(p + 7, max_interval=12), ih)   # key-invariant
-
+# ================================================================ B: optimizers, softmax, audio
 
 def quadratic():
     A = np.array([[3.0, 0.5], [0.5, 1.0]])
@@ -230,7 +218,19 @@ def test_B_wav_to_pitch_matches_pv_format(tmp_path):
     assert short.shape == (N_FRAMES,) and np.isnan(short[-50:]).all()   # padded with NaN
 
 
-# ================================================================ C: reduction & evaluation
+# ================================================================ C: histograms, reduction & evaluation
+
+@skip_if_stub
+def test_C_histograms():
+    from qbsh.histograms import interval_histogram, pitch_histogram
+    p = pitch_batch()
+    centered = p - np.nanmedian(p, axis=1, keepdims=True)  # stand-in for A's KeyNormalizer
+    h = pitch_histogram(centered, n_bins=25)
+    assert h.shape == (4, 25) and np.allclose(h.sum(axis=1), 1)
+    ih = interval_histogram(p, max_interval=12)
+    assert ih.shape == (4, 25) and np.allclose(ih.sum(axis=1), 1)
+    assert np.allclose(interval_histogram(p + 7, max_interval=12), ih)   # key-invariant
+
 
 def stretched(seed=0):
     rng = np.random.default_rng(seed)

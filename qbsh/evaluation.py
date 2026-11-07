@@ -6,7 +6,8 @@ Owner: C.
   * K-fold cross-validation (11.10) is C's TODO. Until it exists, others tune on the
     fixed validation year (config.VAL_YEARS).
 
-Metrics follow the MIREX QBSH task: top-1 / top-10 hit rate and mean reciprocal rank.
+Metrics follow the MIREX QBSH task (top-1 / top-10 hit rate, mean reciprocal rank); top-5 is
+reported as well.
 """
 from __future__ import annotations
 
@@ -44,16 +45,30 @@ def confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, n_classes: int = N_
     return cm
 
 
+def most_confused_pairs(cm: np.ndarray, k: int = 10) -> list[tuple[int, int, int]]:
+    """The k largest off-diagonal entries of a confusion matrix.
+
+    -> [(true_song, predicted_song, count), ...], largest count first. Directed: (3, 7) and
+    (7, 3) are separate entries. Pairs with a zero count are not returned.
+    """
+    off = cm.copy()
+    np.fill_diagonal(off, 0)
+    order = np.argsort(-off, axis=None, kind="stable")[:k]
+    rows, cols = np.unravel_index(order, off.shape)
+    return [(int(r), int(c), int(off[r, c])) for r, c in zip(rows, cols) if off[r, c] > 0]
+
+
 def score_report(scores: np.ndarray, y: np.ndarray) -> dict[str, float]:
     if np.isnan(scores).any():
         raise ValueError("scores contain NaN; did a feature step leave unvoiced frames unimputed?")
     return {"top1": top_k_accuracy(scores, y, 1),
+            "top5": top_k_accuracy(scores, y, 5),
             "top10": top_k_accuracy(scores, y, 10),
             "mrr": mean_reciprocal_rank(scores, y)}
 
 
 def evaluate(model: Classifier, X_train, y_train, X_test, y_test) -> dict[str, float]:
-    """Fit on train, score on test -> {"top1", "top10", "mrr"}."""
+    """Fit on train, score on test -> {"top1", "top5", "top10", "mrr"}."""
     scores = model.fit(X_train, y_train).predict_scores(X_test)
     if scores.shape != (len(y_test), N_SONGS):
         raise ValueError(f"predict_scores must return (n, {N_SONGS}), got {scores.shape}")
@@ -91,7 +106,7 @@ def cross_validate(make_model: Callable[[], Classifier], X: np.ndarray, y: np.nd
                    k: int = 5, groups: np.ndarray | None = None) -> dict[str, float]:
     """Average score_report over K folds. `make_model()` must return a fresh, unfitted model.
 
-    Returns {"top1", "top10", "mrr"} averaged over folds, plus "top1_std".
+    Returns {"top1", "top5", "top10", "mrr"} averaged over folds, plus "top1_std".
     Use it to pick hyperparameters (number of PCA components, lambda, tree depth, ...)
     using the training years only.
 
