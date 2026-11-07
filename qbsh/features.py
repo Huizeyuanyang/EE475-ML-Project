@@ -102,9 +102,9 @@ def polynomial_features(X: np.ndarray, degree: int = 2) -> np.ndarray:
 
 class HandDesignedFeatures(Transformer):
     """The feature vector B, C and D use: concatenates the pieces above
-    plus B's pitch_histogram / interval_histogram (histograms.py).
+    plus C's pitch_histogram / interval_histogram (histograms.py).
 
-    Until B's histograms exist, A can build and test this with
+    Until C's histograms exist, A can build and test this with
     use_pitch_hist=False, use_interval_hist=False.
 
     Input: pitch (n, T) that has already been key-normalized (NaN allowed;
