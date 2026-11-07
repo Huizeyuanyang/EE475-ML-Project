@@ -13,9 +13,9 @@ into a pitch contour (`audio.py`) and fed to the trained model (`demo/hum_demo.p
 | Member | Module file(s) | Course methods | Experiment script |
 |---|---|---|---|
 | **A** | `qbsh/data.py`, `qbsh/features.py` | standard normalization 9.3, missing-value imputation 9.4, nonlinear feature engineering 10.5 | `experiments/exp_key_normalization.py` |
-| **B** | `qbsh/histograms.py`, `qbsh/optimizers.py`, `qbsh/linear.py`, `qbsh/audio.py`, `demo/hum_demo.py` | histogram features 9.2, gradient descent 3.5, multi-class softmax / cross entropy 7.5, mini-batch 7.8; pitch extraction (pYIN) for the demo | `experiments/exp_query_length.py` |
-| **C** | `qbsh/evaluation.py`, `qbsh/reduction.py` | PCA 8.3, K-means 8.5, K-fold CV 11.10 | `experiments/exp_dimred.py` |
-| **D** | `qbsh/nonlinear.py` | neural nets Ch. 13 (batch norm 13.6, early stopping 13.7) | `experiments/exp_handcrafted_vs_learned.py` |
+| **B** | `qbsh/optimizers.py`, `qbsh/linear.py`, `qbsh/audio.py`, `demo/hum_demo.py` | gradient descent 3.5, multi-class softmax / cross entropy 7.5, mini-batch 7.8; pitch extraction (pYIN) for the demo | `experiments/exp_query_length.py` |
+| **C** | `qbsh/histograms.py`, `qbsh/evaluation.py`, `qbsh/reduction.py` | histogram features 9.2, PCA 8.3, K-means 8.5, K-fold CV 11.10 | `experiments/exp_dimred.py`, `experiments/analyze_confusion.py` (confused songs) |
+| **D** | `qbsh/nonlinear.py`, `qbsh/noise.py` | neural nets Ch. 13 (batch norm 13.6, early stopping 13.7) | `experiments/exp_handcrafted_vs_learned.py`, `experiments/exp_noise.py` (noise robustness) |
 | shared | `qbsh/contracts.py`, `qbsh/config.py`, `qbsh/pipeline.py`, `qbsh/baselines.py`, `experiments/common.py`, `experiments/run_baseline.py` | | |
 
 ## Layout
@@ -28,26 +28,32 @@ qbsh-project/
 │   ├── data.py         A: load corpus, year split, crop, load_wav            [implemented]
 │   ├── features.py     A: imputation, key normalization, contour stats,
 │   │                      polynomial features, HandDesignedFeatures, scaler  [stubs]
-│   ├── histograms.py   B: pitch histogram, interval histogram                [stubs]
+│   ├── histograms.py   C: pitch histogram, interval histogram                [stubs]
 │   ├── audio.py        B: wav -> pitch (pYIN), same format as .pv            [stubs]
 │   ├── optimizers.py   B: gradient descent, mini-batch                       [stubs]
 │   ├── linear.py       B: categorical cross entropy, SoftmaxRegression       [stubs]
 │   ├── evaluation.py   C: metrics + save_results [implemented], K-fold CV     [stubs]
+│   ├── noise.py        D: jitter, dropped frames, tempo distortion           [stubs]
 │   ├── reduction.py    C: PCA, K-means                                        [stubs]
 │   ├── nonlinear.py    D: MLP (batch norm, early stopping, embed)             [stubs]
 │   ├── pipeline.py     shared: Pipeline(steps, model), FunctionStep           [implemented]
-│   └── baselines.py    shared: RawPitch, NearestCentroid placeholders         [implemented]
+│   └── baselines.py    shared: RawPitch, NearestCentroid, NearestQuery        [implemented]
 ├── experiments/
-│   ├── run_baseline.py               runs today
+│   ├── run_baseline.py               raw baseline runs today; similarity baseline needs A's features
 │   ├── exp_key_normalization.py      A: normalization methods, softmax
 │   ├── exp_query_length.py           B: 1-8 s, softmax vs MLP vs nearest centroid
 │   ├── exp_dimred.py                 C: PCA components, K-means purity
-│   └── exp_handcrafted_vs_learned.py D: MLP on hand features vs raw contour, embed -> softmax
+│   ├── exp_handcrafted_vs_learned.py D: MLP on hand features vs raw contour, embed -> softmax
+│   ├── exp_noise.py                  D: accuracy vs jitter / dropped frames / tempo
+│   └── analyze_confusion.py          C: most confused song pairs per model
+├── docs/
+│   └── experiment_plan.md            algorithms, experiments, metrics, analysis
 ├── demo/
 │   └── hum_demo.py                   B: your .wav -> audio.py -> trained model -> top-10 songs
 ├── tests/
 │   ├── test_data.py        real-corpus + plumbing checks (must pass now)
-│   └── test_contracts.py   one block per member; skipped until your code exists
+│   ├── test_contracts.py   one block per member; skipped until your code exists
+│   └── test_extras.py      top-5, most_confused_pairs, NearestQuery (no corpus needed)
 └── results/                CSV output (git-ignored)
 ```
 
@@ -61,7 +67,7 @@ Anywhere else: `export QBSH_DATA=/path/to/MIR-QBSH-corpus`.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 pytest                                   # stubs show up as "skipped"
-python -m experiments.run_baseline       # raw pitch + nearest centroid
+python -m experiments.run_baseline       # raw pitch + nearest centroid; key-normalized nearest query once A's features exist
 python -m experiments.exp_query_length   # any experiment; unfinished settings print "skip"
 python -m demo.hum_demo my_hum.wav       # needs librosa (B), A's features, and a trained model
 ```
@@ -70,8 +76,14 @@ Run from the project root, using `python -m experiments.<name>`, not `python exp
 Experiments score the **validation year** by default. Add `--final` to score the **test years**;
 do that once, at the end, for the report. Results go to `results/<name>_val.csv` / `_test.csv`.
 
-Baseline (raw pitch, nearest centroid): **top-1 0.156 / top-10 0.608 / MRR 0.297** on the
+Raw reference (raw pitch, nearest centroid, no key normalization): **top-1 0.156 / top-10 0.608 / MRR 0.297** on the
 validation year (2007), **0.143 / 0.603 / 0.279** on the test years. Chance top-1 is 0.021.
+These numbers were measured before top-5 was added to the metrics.
+
+The similarity baseline is `NearestQuery` after `KeyNormalizer("median")` and `impute_unvoiced`:
+it matches a query's key-normalized contour to the training queries by Euclidean distance.
+It is the baseline the learned models are compared against. `experiments.run_baseline` prints it
+once A's two steps are implemented.
 
 ## Rules
 
@@ -88,7 +100,7 @@ validation year (2007), **0.143 / 0.603 / 0.279** on the test years. Chance top-
 - **Unvoiced frames are `np.nan`** in `QueryData.pitch` (0 in the raw `.pv` files, ~27% of frames).
   Some step before the model has to remove them (`impute_unvoiced`, the histograms, or `RawPitch`).
 - **Every classifier** has `fit(X, y) -> self` and `predict_scores(X) -> (n, 48)`; `predict` is inherited.
-  Metrics are MIREX-style: top-1, top-10 and mean reciprocal rank (`evaluation.py`).
+  Metrics are MIREX-style: top-1, top-10 and mean reciprocal rank, plus top-5 (`evaluation.py`).
 - **Every feature step / reducer** has `fit(X, y=None) -> self` and `transform(X)`.
 - Pipelines start from the raw pitch matrix:
   `Pipeline([KeyNormalizer("median"), HandDesignedFeatures(), StandardScaler()], SoftmaxRegression())`.
@@ -102,13 +114,13 @@ Each place to swap in the real piece is marked with a `TODO` in the script.
 
 1. **A:** `impute_unvoiced`, `KeyNormalizer`, `StandardScaler`, then `HandDesignedFeatures`
    (start with the histograms switched off). B, C and D's experiments all use these.
-2. **B:** `pitch_histogram` / `interval_histogram` first (A's `HandDesignedFeatures` uses them),
-   then `categorical_cross_entropy`, `gradient_descent`, `SoftmaxRegression`, mini-batch.
+2. **B:** `categorical_cross_entropy`, `gradient_descent`, `SoftmaxRegression`, mini-batch.
    `SoftmaxRegression` is the default classifier in A's and C's experiments.
    `audio.py` and the demo come last.
-3. **C:** `k_fold_indices` / `cross_validate`. Everyone uses them to tune hyperparameters
+3. **C:** `pitch_histogram` / `interval_histogram` first (A's `HandDesignedFeatures` uses them),
+   then `k_fold_indices` / `cross_validate`. Everyone uses them to tune hyperparameters
    (until then, tune on the validation year). Then `PCA` (D's embedding plot uses it) and `KMeans`.
-4. **D:** `MLPClassifier` with `embed`.
+4. **D:** `MLPClassifier` with `embed`, then `qbsh/noise.py` for the noise experiment.
 
 ## The split (`config.py`)
 

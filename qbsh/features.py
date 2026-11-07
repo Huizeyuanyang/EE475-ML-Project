@@ -5,7 +5,7 @@ Course methods: standard normalization 9.3, missing-value imputation 9.4,
 nonlinear feature engineering 10.5.
 Owned experiment: key normalization (experiments/exp_key_normalization.py).
 
-The two histogram features (9.2) live in histograms.py (owner: B), so A and B
+The two histogram features (9.2) live in histograms.py (owner: C), so A and C
 never edit the same file. HandDesignedFeatures imports them from there.
 
 Input to everything here is the pitch matrix from data.load_queries():
@@ -23,7 +23,7 @@ from __future__ import annotations
 import numpy as np
 
 from .contracts import Transformer
-from .histograms import interval_histogram, pitch_histogram  # noqa: F401  (owner: B; used by HandDesignedFeatures)
+from .histograms import interval_histogram, pitch_histogram  # noqa: F401  (owner: C; used by HandDesignedFeatures)
 
 
 # ---------------------------------------------------------------- 9.4 missing values

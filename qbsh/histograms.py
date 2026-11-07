@@ -1,6 +1,6 @@
-"""Histogram features (moved out of features.py so A and B don't share a file).
+"""Histogram features (moved out of features.py so A and C don't share a file).
 
-Owner: B (helping A).
+Owner: C (helping A).
 Course method: histogram features 9.2.
 
 A's HandDesignedFeatures imports both functions from here.
@@ -18,9 +18,9 @@ def pitch_histogram(pitch: np.ndarray, n_bins: int = 25, value_range=(-12.0, 12.
     Values outside value_range go into the edge bins, so every row sums to 1.
     pitch (n, T) with NaN -> (n, n_bins). NaN frames are ignored.
 
-    TODO(B)
+    TODO(C)
     """
-    raise NotImplementedError("B: 9.2 pitch histogram")
+    raise NotImplementedError("C: 9.2 pitch histogram")
 
 
 def interval_histogram(pitch: np.ndarray, max_interval: int = 12) -> np.ndarray:
@@ -30,6 +30,6 @@ def interval_histogram(pitch: np.ndarray, max_interval: int = 12) -> np.ndarray:
     Round intervals to whole semitones, clip to [-max_interval, max_interval].
     pitch (n, T) with NaN -> (n, 2 * max_interval + 1), each row sums to 1.
 
-    TODO(B)
+    TODO(C)
     """
-    raise NotImplementedError("B: 9.2 interval histogram")
+    raise NotImplementedError("C: 9.2 interval histogram")
